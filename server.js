@@ -26,6 +26,11 @@ app.use('/api/patient', patientRoutes);
 app.use('/api/doctor', doctorRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Test route
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Server is running!' });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -34,5 +39,7 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`📍 Test: http://localhost:${PORT}/api/test`);
+  console.log(`📍 Auth: http://localhost:${PORT}/api/auth`);
 });

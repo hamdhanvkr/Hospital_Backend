@@ -377,7 +377,6 @@ const storeOTP = (phone, otp) => {
 //   }
 // };
 
-
 const sendOTP = async (phone, otp) => {
   try {
     const apiKey = process.env.FAST2SMS_API_KEY;
@@ -396,48 +395,104 @@ const sendOTP = async (phone, otp) => {
 
     console.log('📱 Sending OTP to:', cleanPhone);
     console.log('🔑 OTP:', otp);
+    console.log('🔐 API Key (first 5 chars):', apiKey.substring(0, 5) + '...');
 
-    // QUICK SMS ROUTE - NO KYC, NO DLT REQUIRED! [citation:6]
-    // This route costs ₹5 per SMS and works immediately
     const url = 'https://www.fast2sms.com/dev/bulkV2';
-    const params = {
-      authorization: apiKey,
-      message: `Your OTP for ABC Hospital is ${otp}. Valid for 10 minutes.`,
-      language: 'english',
-      route: 'q', // 'q' for Quick SMS route [citation:6]
-      numbers: cleanPhone
-    };
-
-    console.log('📤 Sending via Quick SMS route (No KYC required)...');
-
-    const response = await axios.get(url, { 
-      params,
-      headers: {
-        'Cache-Control': 'no-cache'
-      },
-      timeout: 10000
-    });
-
-    console.log('📥 Fast2SMS Response:', response.data);
-
-    // Check response
-    if (response.data && response.data.return === true) {
-      console.log('✅ OTP sent successfully via Quick SMS!');
-      return {
-        success: true,
-        message: 'OTP sent successfully',
-        requestId: response.data.request_id
-      };
-    } else {
-      throw new Error(response.data.message || 'Failed to send OTP');
+    
+    // TRY MULTIPLE ROUTES
+    
+    // Route 1: OTP route (specifically for OTP)
+    console.log('\n📤 Trying OTP route...');
+    try {
+      const otpResponse = await axios.get(url, {
+        params: {
+          authorization: apiKey,
+          variables_values: otp,
+          route: 'otp',
+          numbers: cleanPhone,
+          flash: '0'
+        },
+        timeout: 10000
+      });
+      
+      console.log('OTP Route Response:', otpResponse.data);
+      
+      if (otpResponse.data && otpResponse.data.return === true) {
+        console.log('✅ OTP sent successfully via OTP route!');
+        return {
+          success: true,
+          message: 'OTP sent successfully',
+          requestId: otpResponse.data.request_id
+        };
+      }
+    } catch (error) {
+      console.log('OTP Route Error:', error.response?.data || error.message);
     }
+
+    // Route 2: Quick SMS route
+    console.log('\n📤 Trying Quick SMS route...');
+    try {
+      const quickResponse = await axios.get(url, {
+        params: {
+          authorization: apiKey,
+          message: `Your OTP for ABC Hospital is ${otp}. Valid for 10 minutes.  --- Just For Testing Purpose By Admin`,
+          language: 'english',
+          route: 'q',
+          numbers: cleanPhone
+        },
+        timeout: 10000
+      });
+      
+      console.log('Quick SMS Response:', quickResponse.data);
+      
+      if (quickResponse.data && quickResponse.data.return === true) {
+        console.log('✅ OTP sent successfully via Quick SMS!');
+        return {
+          success: true,
+          message: 'OTP sent successfully',
+          requestId: quickResponse.data.request_id
+        };
+      }
+    } catch (error) {
+      console.log('Quick SMS Error:', error.response?.data || error.message);
+    }
+
+    // Route 3: Transactional route
+    console.log('\n📤 Trying Transactional route...');
+    try {
+      const transResponse = await axios.get(url, {
+        params: {
+          authorization: apiKey,
+          message: `Your OTP is ${otp}`,
+          language: 'english',
+          route: 't',
+          numbers: cleanPhone,
+          sender_id: 'FSTSMS'
+        },
+        timeout: 10000
+      });
+      
+      console.log('Transactional Response:', transResponse.data);
+      
+      if (transResponse.data && transResponse.data.return === true) {
+        console.log('✅ OTP sent successfully via Transactional route!');
+        return {
+          success: true,
+          message: 'OTP sent successfully',
+          requestId: transResponse.data.request_id
+        };
+      }
+    } catch (error) {
+      console.log('Transactional Error:', error.response?.data || error.message);
+    }
+
+    // If all routes fail
+    throw new Error('All SMS routes failed. Check your Fast2SMS account.');
+
   } catch (error) {
     console.error('❌ Fast2SMS Error:', error.message);
-    if (error.response) {
-      console.error('Response data:', error.response.data);
-    }
     
-    // For development/testing - simulate success
+    // Development fallback
     if (process.env.NODE_ENV === 'development') {
       console.log('⚠️ DEVELOPMENT MODE: Simulating OTP send success');
       console.log(`📱 Test OTP for ${phone}: ${otp}`);
