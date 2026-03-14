@@ -137,12 +137,84 @@ const addPatientManually = async (req, res) => {
   }
 };
 
+// Get doctor by ID
+const getDoctorById = async (req, res) => {
+  try {
+    const doctor = await Doctor.findById(req.params.id);
+    if (!doctor) {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+    res.json(doctor);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// Update appointment
+const updateAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { appointmentDate, timeSlot, status, symptoms } = req.body;
+
+    console.log('📝 Updating appointment:', id);
+    console.log('📅 New data:', { appointmentDate, timeSlot, status, symptoms });
+
+    // Find the appointment
+    const appointment = await Appointment.findById(id);
+    
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    // Check if the new time slot is available (if date/time changed)
+    if (appointmentDate || timeSlot) {
+      const newDate = appointmentDate ? new Date(appointmentDate) : appointment.appointmentDate;
+      const newTimeSlot = timeSlot || appointment.timeSlot;
+
+      // Check for conflicts (excluding current appointment)
+      const existingAppointment = await Appointment.findOne({
+        doctorId: appointment.doctorId,
+        appointmentDate: newDate,
+        timeSlot: newTimeSlot,
+        _id: { $ne: id }
+      });
+
+      if (existingAppointment) {
+        return res.status(400).json({ message: 'Selected time slot is already booked' });
+      }
+    }
+
+    // Update fields
+    if (appointmentDate) appointment.appointmentDate = new Date(appointmentDate);
+    if (timeSlot) appointment.timeSlot = timeSlot;
+    if (status) appointment.status = status;
+    if (symptoms !== undefined) appointment.symptoms = symptoms;
+
+    appointment.lastChangedAt = new Date();
+
+    await appointment.save();
+
+    console.log('✅ Appointment updated successfully');
+
+    res.json({
+      message: 'Appointment updated successfully',
+      appointment
+    });
+  } catch (error) {
+    console.error('❌ Error updating appointment:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Make sure all functions are exported
 module.exports = {
   addDoctor,
   getAllDoctors,
+  getDoctorById,
   updateDoctor,
   deleteDoctor,
   getAllAppointments,
+  updateAppointment,
   addPatientManually
 };

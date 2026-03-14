@@ -4,15 +4,24 @@ const {
   getDoctorAppointments,
   updateAppointmentStatus,
   getTodayAppointments,
-  getAppointmentStats
+  getAppointmentStats,
+  getAppointmentById,
+  getAvailableSlotsForDoctor, // Add this import
+  rescheduleAppointment
 } = require('../controllers/doctorController');
 const { authenticate, authorizeDoctor } = require('../middleware/auth');
 
 // All routes require authentication and doctor role
 router.use(authenticate, authorizeDoctor);
 
-// Get all appointments for the logged-in doctor
+// Get all appointments
 router.get('/appointments', getDoctorAppointments);
+
+// Get single appointment
+router.get('/appointment/:appointmentId', getAppointmentById);
+
+// Get available slots for rescheduling - NEW ROUTE
+router.get('/available-slots', getAvailableSlotsForDoctor);
 
 // Get today's appointments
 router.get('/appointments/today', getTodayAppointments);
@@ -22,5 +31,8 @@ router.get('/stats', getAppointmentStats);
 
 // Update appointment status
 router.put('/appointments/:appointmentId/status', updateAppointmentStatus);
+
+// Reschedule appointment
+router.put('/reschedule-appointment/:appointmentId', rescheduleAppointment);
 
 module.exports = router;
