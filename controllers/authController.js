@@ -261,7 +261,7 @@ const login = async (req, res) => {
 
     let doctorData = null;
     let patientData = null;
-
+    let fullName = user.username;
     // Role-specific data fetching
     if (role === 'patient') {
       patientData = await Patient.findOne({ userId: user._id });
@@ -295,6 +295,7 @@ const login = async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
+        fullName:fullName,
         role: user.role,
         ...(role === 'doctor' && { doctorId: doctorData?._id }),
         ...(role === 'patient' && { patientId: patientData?._id })

@@ -1,14 +1,14 @@
 const Appointment = require('../models/Appointment');
 const Doctor = require('../models/Doctor');
 const Patient = require('../models/Patient');
-const { sendRescheduleEmail } = require('../utils/emailService');
+const { sendRescheduleEmail, sendConfirmationEmail } = require('../utils/emailService');
 
 // Get doctor's appointments (only for the logged-in doctor)
 // Get doctor's appointments (NOW INCLUDES CANCELLED)
 const getDoctorAppointments = async (req, res) => {
   try {
     const doctorId = req.doctorId;
-    
+
     console.log('🔍 Fetching appointments for doctor ID:', doctorId);
 
     if (!doctorId) {
@@ -17,12 +17,12 @@ const getDoctorAppointments = async (req, res) => {
 
     // REMOVED THE STATUS FILTER - NOW GETS ALL APPOINTMENTS
     const appointments = await Appointment.find({ doctorId: doctorId })
-    .populate({
-      path: 'patientId',
-      model: 'Patient',
-      select: 'fullName email phone age gender address'
-    })
-    .sort({ appointmentDate: -1, timeSlot: 1 });
+      .populate({
+        path: 'patientId',
+        model: 'Patient',
+        select: 'fullName email phone age gender address'
+      })
+      .sort({ appointmentDate: -1, timeSlot: 1 });
 
     console.log(`📊 Found ${appointments.length} appointments total`);
     console.log(`📊 Status breakdown:`, {
@@ -75,17 +75,59 @@ const updateAppointmentStatus = async (req, res) => {
     const appointment = await Appointment.findOne({
       _id: appointmentId,
       doctorId: doctorId
-    });
+    }).populate('patientId').populate('doctorId');
 
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found or not authorized' });
     }
+
+    // Save old status for comparison
+    const oldStatus = appointment.status;
 
     // Update the status
     appointment.status = status;
     await appointment.save();
 
     console.log('✅ Appointment status updated successfully');
+
+    // Send confirmation email if status changed to 'confirmed'
+    if (status === 'confirmed' && oldStatus !== 'confirmed') {
+      const patientEmail = appointment.patientId?.email;
+      const patientName = appointment.patientId?.fullName;
+      const doctorName = appointment.doctorId?.name;
+
+      if (patientEmail) {
+        try {
+          // Format date and time for email
+          const formatDateForDisplay = (date) => {
+            return new Date(date).toLocaleDateString('en-IN', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            });
+          };
+
+          const formatTimeForDisplay = (time24) => {
+            const [hours, minutes] = time24.split(':').map(Number);
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const hour12 = hours % 12 || 12;
+            return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+          };
+
+          const appointmentDetails = {
+            date: formatDateForDisplay(appointment.appointmentDate),
+            time: formatTimeForDisplay(appointment.timeSlot),
+            symptoms: appointment.symptoms
+          };
+
+          await sendConfirmationEmail(patientEmail, patientName, doctorName, appointmentDetails);
+          console.log('✅ Confirmation email sent to patient');
+        } catch (emailError) {
+          console.error('❌ Failed to send confirmation email:', emailError.message);
+          // Don't fail the request if email fails
+        }
+      }
+    }
 
     res.json({
       message: 'Appointment status updated',
@@ -101,11 +143,11 @@ const updateAppointmentStatus = async (req, res) => {
 const getTodayAppointments = async (req, res) => {
   try {
     const doctorId = req.doctorId;
-    
+
     // Get today's date range
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -116,8 +158,8 @@ const getTodayAppointments = async (req, res) => {
         $lt: tomorrow
       }
     })
-    .populate('patientId')
-    .sort({ timeSlot: 1 });
+      .populate('patientId')
+      .sort({ timeSlot: 1 });
 
     res.json(appointments);
   } catch (error) {
@@ -132,31 +174,31 @@ const getAppointmentStats = async (req, res) => {
     const doctorId = req.doctorId;
 
     const totalAppointments = await Appointment.countDocuments({ doctorId });
-    
-    const pendingAppointments = await Appointment.countDocuments({ 
-      doctorId, 
-      status: 'pending' 
+
+    const pendingAppointments = await Appointment.countDocuments({
+      doctorId,
+      status: 'pending'
     });
-    
-    const confirmedAppointments = await Appointment.countDocuments({ 
-      doctorId, 
-      status: 'confirmed' 
+
+    const confirmedAppointments = await Appointment.countDocuments({
+      doctorId,
+      status: 'confirmed'
     });
-    
-    const completedAppointments = await Appointment.countDocuments({ 
-      doctorId, 
-      status: 'completed' 
+
+    const completedAppointments = await Appointment.countDocuments({
+      doctorId,
+      status: 'completed'
     });
-    
-    const cancelledAppointments = await Appointment.countDocuments({ 
-      doctorId, 
-      status: 'cancelled' 
+
+    const cancelledAppointments = await Appointment.countDocuments({
+      doctorId,
+      status: 'cancelled'
     });
 
     // Get today's appointments count
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -279,12 +321,12 @@ const rescheduleAppointment = async (req, res) => {
     appointment.rescheduledBy = 'doctor';
     appointment.originalAppointmentDate = originalDate;
     appointment.originalTimeSlot = originalSlot;
-    
+
     // Add to history
     if (!appointment.rescheduleHistory) {
       appointment.rescheduleHistory = [];
     }
-    
+
     appointment.rescheduleHistory.push({
       rescheduledAt: new Date(),
       reason: reason,
@@ -318,7 +360,7 @@ const rescheduleAppointment = async (req, res) => {
           newTime: newTimeStr,
           reason: reason
         };
-        
+
         await sendRescheduleEmail(patientEmail, patientName, doctorName, emailDetails);
         console.log('✅ Reschedule email sent to patient:', patientEmail);
       } catch (emailError) {
@@ -382,10 +424,10 @@ const getAvailableSlotsForDoctor = async (req, res) => {
     // Parse start and end times
     const [startHour, startMinute] = doctor.startTime.split(':').map(Number);
     const [endHour, endMinute] = doctor.endTime.split(':').map(Number);
-    
+
     const startTimeMinutes = startHour * 60 + startMinute;
     const endTimeMinutes = endHour * 60 + endMinute;
-    
+
     const slotDuration = doctor.slotDuration || 30;
 
     console.log('⏰ Working hours:', doctor.startTime, '-', doctor.endTime);
@@ -394,26 +436,26 @@ const getAvailableSlotsForDoctor = async (req, res) => {
 
     // Generate slots - FIXED: Use <= to include the end time
     const slots = [];
-    
+
     // For a 30-minute slot, the last appointment that starts at 15:30 ends at 16:00
     // So we want to include slots where start time <= end time
     for (let minutes = startTimeMinutes; minutes <= endTimeMinutes; minutes += slotDuration) {
       const slotHour = Math.floor(minutes / 60);
       const slotMinute = minutes % 60;
-      
+
       // Skip if we go beyond 24 hours (safety check)
       if (slotHour >= 24) break;
-      
+
       // Format in 12-hour for display
       const ampm = slotHour >= 12 ? 'PM' : 'AM';
       let hour12 = slotHour % 12;
       hour12 = hour12 === 0 ? 12 : hour12;
-      
+
       const minuteStr = slotMinute < 10 ? '0' + slotMinute : slotMinute;
       const timeString12 = `${hour12}:${minuteStr} ${ampm}`;
-      
+
       slots.push(timeString12);
-      
+
       console.log(`✅ Added slot: ${timeString12} (${slotHour}:${slotMinute})`);
     }
 
@@ -462,7 +504,7 @@ module.exports = {
   updateAppointmentStatus,
   getTodayAppointments,
   getAppointmentStats,
-  getAppointmentById,  
+  getAppointmentById,
   rescheduleAppointment,
   getAvailableSlotsForDoctor
 };
