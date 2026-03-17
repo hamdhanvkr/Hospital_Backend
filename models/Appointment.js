@@ -26,6 +26,20 @@ const appointmentSchema = new mongoose.Schema({
   },
   symptoms: String,
   
+  // Payment information
+  paymentInfo: {
+    orderId: String,
+    paymentId: String,
+    amount: Number,
+    status: {
+      type: String,
+      enum: ['pending', 'paid', 'failed', 'refunded'],
+      default: 'pending'
+    },
+    paidAt: Date,
+    refundedAt: Date
+  },
+  
   // Reschedule tracking
   isRescheduled: {
     type: Boolean,
@@ -43,7 +57,6 @@ const appointmentSchema = new mongoose.Schema({
   originalAppointmentDate: Date,
   originalTimeSlot: String,
   
-  // FIX: Initialize with default empty array
   rescheduleHistory: {
     type: [{
       rescheduledAt: Date,
@@ -57,7 +70,6 @@ const appointmentSchema = new mongoose.Schema({
     default: []
   },
   
-  // FIX: Initialize with default empty array
   changeHistory: {
     type: [{
       changedAt: Date,
